@@ -1,4 +1,4 @@
-const TARGET_CHARS = 100;
+const TARGET_CHARS = 50;
 
 const topics = [
   {
