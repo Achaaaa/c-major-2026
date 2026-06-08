@@ -175,6 +175,7 @@ const els = {
   progressFill: document.querySelector("#progress-fill"),
   charBubbles: document.querySelector("#char-bubbles"),
   liveTranscript: document.querySelector("#live-transcript"),
+  generatingPanel: document.querySelector("#generating-panel"),
   startButton: document.querySelector("#start-button"),
   skipButton: document.querySelector("#skip-button"),
   manualInput: document.querySelector("#manual-input"),
@@ -267,6 +268,7 @@ function startExperience() {
   state.acceptingInput = true;
   state.chatHistory = [];
   state.chatFingerprints.clear();
+  setGenerating(false);
   els.startButton.textContent = "話し続ける";
   els.startButton.disabled = true;
   els.skipButton.disabled = false;
@@ -544,11 +546,17 @@ function showReaction(text) {
   els.reactionPop.classList.add("show");
 }
 
+function setGenerating(isGenerating) {
+  if (!els.generatingPanel) return;
+  els.generatingPanel.hidden = !isGenerating;
+}
+
 function addMessage(name, text, self = false) {
   if (!text) return;
   const shouldAutoScroll = isChatAtBottom();
   const item = document.createElement("div");
-  item.className = `message${self ? " self" : ""}`;
+  const typeClass = self ? " self" : getMessageClass(name);
+  item.className = `message${typeClass}`;
   item.innerHTML = `<span class="name"></span><span class="body"></span>`;
   item.querySelector(".name").textContent = name;
   item.querySelector(".body").textContent = text;
@@ -558,6 +566,12 @@ function addMessage(name, text, self = false) {
   if (shouldAutoScroll) {
     els.chatFeed.scrollTop = els.chatFeed.scrollHeight;
   }
+}
+
+function getMessageClass(name) {
+  if (name === "ガイド") return " guide";
+  if (name === "未来診断") return " system";
+  return "";
 }
 
 function rememberChatMessage(name, text, self) {
@@ -678,11 +692,12 @@ function finishDiagnosis() {
   state.started = false;
   state.acceptingInput = false;
   state.ignoreSpeechUntil = Date.now() + 1600;
-  els.chatStatus.textContent = "generating result";
+  els.chatStatus.textContent = "生成中";
   setMicState("解析中");
   els.skipButton.disabled = true;
   els.manualInput.disabled = true;
-  addMessage("未来診断", "診断結果と3Dフィギュア画像を生成しています");
+  setGenerating(true);
+  addMessage("ガイド", "診断結果と3Dフィギュア画像を生成しています");
   showReaction("診断と画像を生成中");
 
   pauseSpeechRecognition();
@@ -847,6 +862,7 @@ function escapeSvg(value) {
 }
 
 function renderResult(result) {
+  setGenerating(false);
   els.resultTitle.textContent = result.type;
   els.resultSummary.textContent = result.summary;
   els.resultMission.textContent = result.mission || "まだ名前のない価値を見つけ、次の体験として形にする。";
@@ -875,6 +891,7 @@ function handleApiFailure(message) {
   if (state.apiFailed) return;
   state.apiFailed = true;
   stopChatStream();
+  setGenerating(false);
   state.started = false;
   state.chatPending = false;
   pauseSpeechRecognition();
@@ -910,6 +927,7 @@ function restart() {
   state.chatHistory = [];
   state.chatFingerprints.clear();
   state.milestones.clear();
+  setGenerating(false);
   els.resultView.hidden = true;
   els.startButton.disabled = false;
   els.startButton.innerHTML = '<span class="button-icon" aria-hidden="true">●</span>会話をはじめる';
