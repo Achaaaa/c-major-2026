@@ -26,7 +26,8 @@ module.exports = async function handler(req, res) {
           topic: payload.topic,
           recentTranscript: payload.transcript,
           previousQuestion: payload.previousQuestion,
-          instruction: "発話内容に即して、続きを引き出す短い質問。直前と重複しない。"
+          recentComments: payload.recentComments || [],
+          instruction: "発話内容に即して、続きを引き出す短い質問。recentCommentsと同じ意味・同じ語尾のコメントは避ける。直前と重複しない。"
         })
       }
     ], { maxTokens: 40, temperature: 0.9 });

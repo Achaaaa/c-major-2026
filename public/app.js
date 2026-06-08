@@ -64,9 +64,14 @@ const state = {
   currentText: "",
   allTexts: [],
   started: false,
+  acceptingInput: false,
+  transitioning: false,
+  ignoreSpeechUntil: 0,
   chatTimer: null,
   recognition: null,
   shouldListen: false,
+  speechSession: 0,
+  speechRestartTimer: null,
   lastSpeechAt: 0,
   lastQuestionAt: 0,
   lastQuestion: "",
@@ -74,6 +79,8 @@ const state = {
   chatGeneration: 0,
   promptedChatTimer: null,
   apiFailed: false,
+  chatHistory: [],
+  chatFingerprints: new Set(),
   milestones: new Set()
 };
 
@@ -101,39 +108,50 @@ const els = {
   restartButton: document.querySelector("#restart-button")
 };
 
-function initSpeechRecognition() {
-  if (state.recognition) return state.recognition;
+function initSpeechRecognition(forceNew = false) {
+  if (state.recognition && !forceNew) return state.recognition;
+
+  if (state.recognition && forceNew) {
+    detachSpeechRecognition();
+  }
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    els.micState.textContent = "音声非対応";
+    setMicState("音声非対応");
     return null;
   }
 
   const recognition = new SpeechRecognition();
+  const session = state.speechSession + 1;
+  state.speechSession = session;
   recognition.lang = "ja-JP";
   recognition.continuous = true;
   recognition.interimResults = true;
 
   recognition.onstart = () => {
-    els.micState.textContent = "聞き取り中";
+    if (session !== state.speechSession) return;
+    setMicState("聞き取り中");
   };
 
   recognition.onerror = () => {
-    els.micState.textContent = "入力欄も使えます";
+    if (session !== state.speechSession) return;
+    setMicState("入力欄も使えます");
   };
 
   recognition.onend = () => {
-    if (state.started && state.shouldListen) {
+    if (session === state.speechSession && state.started && state.shouldListen) {
       try {
         recognition.start();
       } catch {
-        els.micState.textContent = "再接続中";
+        setMicState("再接続中");
       }
     }
   };
 
   recognition.onresult = (event) => {
+    if (session !== state.speechSession) return;
+    if (!state.started || state.transitioning || Date.now() < state.ignoreSpeechUntil) return;
+
     let finalText = "";
     let interimText = "";
 
@@ -156,18 +174,23 @@ function initSpeechRecognition() {
     }
   };
 
+  state.recognition = recognition;
   return recognition;
 }
 
 function startExperience() {
   state.apiFailed = false;
   state.started = true;
+  state.acceptingInput = true;
+  state.chatHistory = [];
+  state.chatFingerprints.clear();
   els.startButton.textContent = "話し続ける";
   els.startButton.disabled = true;
   els.skipButton.disabled = false;
   els.manualInput.disabled = false;
   setChatStatus("待機中");
-  addMessage("未来診断", "準備できました。思いついたことからどうぞ。");
+  addMessage("ガイド", "準備できました。思いついたことからどうぞ。");
+  checkApiHealth();
   startChatStream();
 
   state.recognition = state.recognition || initSpeechRecognition();
@@ -176,7 +199,7 @@ function startExperience() {
       state.shouldListen = true;
       state.recognition.start();
     } catch {
-      els.micState.textContent = "入力欄も使えます";
+      setMicState("入力欄も使えます");
     }
   }
 }
@@ -199,6 +222,51 @@ function stopChatStream() {
   }
 }
 
+function detachSpeechRecognition() {
+  if (!state.recognition) return;
+  const recognition = state.recognition;
+  recognition.onstart = null;
+  recognition.onerror = null;
+  recognition.onend = null;
+  recognition.onresult = null;
+  try {
+    recognition.stop();
+  } catch {
+    // Recognition may already be stopped.
+  }
+  state.recognition = null;
+}
+
+function pauseSpeechRecognition() {
+  state.shouldListen = false;
+  state.speechSession += 1;
+  if (state.speechRestartTimer) {
+    window.clearTimeout(state.speechRestartTimer);
+    state.speechRestartTimer = null;
+  }
+  detachSpeechRecognition();
+}
+
+function resumeSpeechRecognition(delay = 700) {
+  if (!state.started) return;
+  if (state.speechRestartTimer) {
+    window.clearTimeout(state.speechRestartTimer);
+  }
+  setMicState("再接続中");
+  state.speechRestartTimer = window.setTimeout(() => {
+    state.speechRestartTimer = null;
+    if (!state.started) return;
+    const recognition = initSpeechRecognition(true);
+    if (!recognition) return;
+    state.shouldListen = true;
+    try {
+      recognition.start();
+    } catch {
+      // Recognition may already be running.
+    }
+  }, delay);
+}
+
 function scheduleNextChat(delay = getChatDelay(), generation = state.chatGeneration) {
   if (!state.started) return;
   if (generation !== state.chatGeneration) return;
@@ -215,8 +283,9 @@ async function runChatTick(generation) {
 
   state.chatPending = true;
   try {
-    const text = await getNextChatText();
-    if (text) addMessage(randomName(), text);
+    const text = await getNextChatText(generation);
+    if (generation !== state.chatGeneration) return;
+    if (text && !isDuplicateChat(text)) addMessage(randomName(), text);
   } finally {
     state.chatPending = false;
     scheduleNextChat(getChatDelay(), generation);
@@ -233,7 +302,7 @@ function randomBetween(min, max) {
 }
 
 function randomName() {
-  const names = ["先輩A", "となりの人", "採用担当", "未来の自分", "コメント欄"];
+  const names = ["ユーザーA", "となりの人", "名無しさん", "Bot", "ユーザーB"];
   return names[Math.floor(Math.random() * names.length)];
 }
 
@@ -242,7 +311,8 @@ function markSpeechActivity() {
   schedulePromptedChat();
 }
 
-async function getNextChatText() {
+async function getNextChatText(generation = state.chatGeneration) {
+  if (generation !== state.chatGeneration) return "";
   if (!isSpeakingNow()) {
     setChatStatus("発話待ち");
     return "";
@@ -251,7 +321,7 @@ async function getNextChatText() {
   const topic = topics[state.topicIndex];
   const topicPrompt = topic.prompts[Math.floor(Math.random() * topic.prompts.length)];
   const contentQuestion = buildContentQuestion(state.currentText);
-  return getSmartChatText("speaking", Math.random() < 0.7 ? contentQuestion : topicPrompt);
+  return getSmartChatText("speaking", Math.random() < 0.7 ? contentQuestion : topicPrompt, generation);
 }
 
 function isSpeakingNow() {
@@ -274,11 +344,12 @@ function schedulePromptedChat() {
   }, randomBetween(850, 1500));
 }
 
-async function getSmartChatText(mode, fallback) {
+async function getSmartChatText(mode, fallback, generation = state.chatGeneration) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 1800);
 
   try {
+    if (generation !== state.chatGeneration) return "";
     setChatStatus("API接続中");
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -287,7 +358,8 @@ async function getSmartChatText(mode, fallback) {
         mode,
         topic: topics[state.topicIndex].title,
         transcript: state.currentText.slice(-180),
-        previousQuestion: state.lastQuestion
+        previousQuestion: state.lastQuestion,
+        recentComments: state.chatHistory.slice(-8)
       }),
       signal: controller.signal
     });
@@ -298,6 +370,7 @@ async function getSmartChatText(mode, fallback) {
       throw new Error("chat api failed");
     }
     const data = await response.json();
+    if (generation !== state.chatGeneration) return "";
     if (data.source !== "api") throw new Error("chat api unavailable");
     if (typeof data.message !== "string" || !data.message.trim()) {
       throw new Error("empty chat api response");
@@ -350,7 +423,7 @@ function addSpeech(text, fromMic = false) {
 
 function renderTranscript(interim = "") {
   const display = `${state.currentText}${interim ? ` ${interim}` : ""}`.trim();
-  els.liveTranscript.textContent = display || "話した言葉がここに溜まります。";
+  els.liveTranscript.textContent = display || "";
 }
 
 function updateProgress() {
@@ -389,6 +462,7 @@ function showReaction(text) {
 }
 
 function addMessage(name, text, self = false) {
+  if (!text) return;
   const shouldAutoScroll = isChatAtBottom();
   const item = document.createElement("div");
   item.className = `message${self ? " self" : ""}`;
@@ -396,10 +470,33 @@ function addMessage(name, text, self = false) {
   item.querySelector(".name").textContent = name;
   item.querySelector(".body").textContent = text;
   els.chatFeed.appendChild(item);
+  rememberChatMessage(name, text, self);
 
   if (shouldAutoScroll) {
     els.chatFeed.scrollTop = els.chatFeed.scrollHeight;
   }
+}
+
+function rememberChatMessage(name, text, self) {
+  if (self || name === "ガイド") return;
+  const fingerprint = normalizeChatText(text);
+  if (!fingerprint) return;
+  state.chatFingerprints.add(fingerprint);
+  state.chatHistory.push(text);
+  if (state.chatHistory.length > 30) {
+    const removed = state.chatHistory.shift();
+    if (!state.chatHistory.some((item) => normalizeChatText(item) === normalizeChatText(removed))) {
+      state.chatFingerprints.delete(normalizeChatText(removed));
+    }
+  }
+}
+
+function isDuplicateChat(text) {
+  return state.chatFingerprints.has(normalizeChatText(text));
+}
+
+function normalizeChatText(text) {
+  return String(text || "").replace(/[、。！？!?「」『』\s]/g, "").trim();
 }
 
 function isChatAtBottom() {
@@ -412,32 +509,70 @@ function setChatStatus(text) {
   els.chatStatus.textContent = text;
 }
 
+function setMicState(text) {
+  if (els.micState) {
+    els.micState.textContent = text;
+  }
+}
+
+async function checkApiHealth() {
+  try {
+    setChatStatus("API確認中");
+    const response = await fetch("/api/health");
+    if (!response.ok) throw new Error("health api failed");
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || "health api unavailable");
+    setChatStatus("API OK");
+  } catch {
+    handleApiFailure("APIに接続できません。最初からやり直します。");
+  }
+}
+
 function completeTopic() {
+  if (!state.started || state.transitioning) return;
+  state.transitioning = true;
+  stopChatStream();
+  pauseSpeechRecognition();
+  state.ignoreSpeechUntil = Date.now() + 2200;
   const finalText = state.currentText.trim();
   if (finalText) {
     state.allTexts.push(finalText);
   }
 
-  addMessage("未来診断", "送信完了。次いきます。");
   state.topicIndex += 1;
 
   if (state.topicIndex >= topics.length) {
+    state.transitioning = false;
     finishDiagnosis();
     return;
   }
 
+  setTopic(state.topicIndex);
+  resetCurrentInput();
+  clearChatFeed();
+  addMessage("ガイド", "次の質問です。思いついたところからどうぞ。");
+  enableTopicInput();
+  startChatStream();
   window.setTimeout(() => {
-    setTopic(state.topicIndex);
-    resetCurrentInput();
-    startChatStream();
-  }, 900);
+    state.transitioning = false;
+  }, 350);
+}
+
+function enableTopicInput() {
+  state.acceptingInput = true;
+  els.manualInput.disabled = false;
+  els.skipButton.disabled = false;
+  setMicState(state.recognition ? "再接続中" : "入力欄も使えます");
+  resumeSpeechRecognition(750);
 }
 
 function setTopic(index) {
   const topic = topics[index];
   els.topic.textContent = topic.title;
   els.hint.textContent = topic.hint;
-  els.topicCount.textContent = `${index + 1} / ${topics.length}`;
+  if (els.topicCount) {
+    els.topicCount.textContent = `${index + 1} / ${topics.length}`;
+  }
 }
 
 function resetCurrentInput() {
@@ -451,18 +586,21 @@ function resetCurrentInput() {
   updateProgress();
 }
 
+function clearChatFeed() {
+  els.chatFeed.textContent = "";
+}
+
 function finishDiagnosis() {
   stopChatStream();
   state.started = false;
+  state.acceptingInput = false;
+  state.ignoreSpeechUntil = Date.now() + 1600;
   els.chatStatus.textContent = "complete";
-  els.micState.textContent = "解析中";
+  setMicState("解析中");
   els.skipButton.disabled = true;
   els.manualInput.disabled = true;
 
-  if (state.recognition) {
-    state.shouldListen = false;
-    state.recognition.stop();
-  }
+  pauseSpeechRecognition();
 
   window.setTimeout(async () => {
     const transcript = state.allTexts.join("。");
@@ -616,7 +754,7 @@ function renderResult(result) {
     els.jobList.appendChild(li);
   });
 
-  els.micState.textContent = "完了";
+  setMicState("完了");
   els.resultView.hidden = false;
 }
 
@@ -625,17 +763,10 @@ function handleApiFailure(message) {
   state.apiFailed = true;
   stopChatStream();
   state.started = false;
-  state.shouldListen = false;
   state.chatPending = false;
-  if (state.recognition) {
-    try {
-      state.recognition.stop();
-    } catch {
-      // The browser may already have stopped recognition.
-    }
-  }
+  pauseSpeechRecognition();
   setChatStatus("APIエラー");
-  els.micState.textContent = "APIエラー";
+  setMicState("APIエラー");
   els.skipButton.disabled = true;
   els.manualInput.disabled = true;
   addMessage("未来診断", message);
@@ -649,26 +780,32 @@ function handleApiFailure(message) {
 
 function restart() {
   stopChatStream();
+  pauseSpeechRecognition();
   state.topicIndex = 0;
   state.currentText = "";
   state.allTexts = [];
   state.started = false;
+  state.acceptingInput = false;
+  state.transitioning = false;
+  state.ignoreSpeechUntil = 0;
   state.shouldListen = false;
   state.lastSpeechAt = 0;
   state.lastQuestionAt = 0;
   state.lastQuestion = "";
   state.chatPending = false;
   state.apiFailed = false;
+  state.chatHistory = [];
+  state.chatFingerprints.clear();
   state.milestones.clear();
   els.resultView.hidden = true;
   els.startButton.disabled = false;
-  els.startButton.innerHTML = '<span class="button-icon" aria-hidden="true">●</span>診断スタート';
+  els.startButton.innerHTML = '<span class="button-icon" aria-hidden="true">●</span>会話をはじめる';
   els.skipButton.disabled = true;
   els.manualInput.disabled = true;
   els.manualInput.value = "";
   els.chatFeed.textContent = "";
   els.chatStatus.textContent = "streaming soon";
-  els.micState.textContent = "待機中";
+  setMicState("待機中");
   setTopic(0);
   resetCurrentInput();
 }
@@ -677,7 +814,7 @@ els.startButton.addEventListener("click", startExperience);
 els.skipButton.addEventListener("click", completeTopic);
 els.restartButton.addEventListener("click", restart);
 els.manualInput.addEventListener("input", (event) => {
-  if (!state.started) return;
+  if (!state.started || state.apiFailed) return;
   const nextValue = event.target.value;
   const added = nextValue.slice(state.currentText.length);
   state.currentText = nextValue;

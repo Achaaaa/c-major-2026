@@ -127,8 +127,8 @@ textarea {
 
 h1 {
   margin: 0;
-  font-size: clamp(2.4rem, 5.6vw, 6.8rem);
-  line-height: 1.08;
+  font-size: clamp(2rem, 4.1vw, 4.8rem);
+  line-height: 1.14;
   letter-spacing: 0;
 }
 
@@ -519,11 +519,11 @@ textarea {
   }
 
   .chat-pane {
-    height: 260px;
+    height: 460px;
   }
 
   h1 {
-    font-size: clamp(2rem, 10vw, 4.4rem);
+    font-size: clamp(1.8rem, 8vw, 3.3rem);
   }
 
   .result-grid {
@@ -542,8 +542,7 @@ textarea {
     grid-template-rows: minmax(0, 1fr) 230px;
   }
 
-  .topbar,
-  .session-meta {
+  .topbar {
     align-items: flex-start;
     flex-direction: column;
   }

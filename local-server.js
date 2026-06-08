@@ -112,9 +112,10 @@ async function handleChat(request, response) {
               topic: payload.topic,
               recentTranscript: payload.transcript,
               previousQuestion: payload.previousQuestion,
+              recentComments: payload.recentComments || [],
               instruction: payload.mode === "idle"
                 ? "無言の間なので相槌っぽく待つコメント。質問しすぎない。"
-                : "発話内容に即して、続きを引き出す短い質問。直前と重複しない。"
+                : "発話内容に即して、続きを引き出す短い質問。recentCommentsと同じ意味・同じ語尾のコメントは避ける。直前と重複しない。"
             })
           }
         ]
