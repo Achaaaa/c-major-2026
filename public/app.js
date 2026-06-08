@@ -52,6 +52,86 @@ const fallbackQuestions = [
   "一番覚えてる場面は？"
 ];
 
+const resultProfiles = [
+  {
+    type: "遊び筋道プロトタイパー",
+    summary: "人が夢中になる流れを読み解き、試作品や攻略の道筋に変える未知の仕事です。楽しさの構造を見つけて、体験の入口を作ります。",
+    mission: "夢中の構造を、触れる試作品にする。",
+    why: "作る、遊ぶ、攻略する感覚を行き来しながら、手を動かして理解する傾向が見えます。",
+    artifact: "光る試作品とルートマップ",
+    keywords: ["ゲーム", "制作", "攻略", "試作"],
+    jobs: ["体験設計", "プロダクト企画", "ゲーム・教材制作", "UXリサーチ"],
+    figure: "青緑のジャケットで、片手に光る試作品、片手に小さなルートマップを持つ3Dフィギュア",
+    signals: ["ゲーム", "攻略", "遊び", "作る", "制作", "開発", "コード", "デザイン", "描", "プレイ"]
+  },
+  {
+    type: "場の温度翻訳者",
+    summary: "人の言葉になる前の違和感や熱量を受け取り、場が動き出す言葉へ翻訳する未知の仕事です。関係性の流れを整えます。",
+    mission: "言葉になる前の温度を、場の一歩にする。",
+    why: "人の反応や関係性を見ながら、相手に合わせて動く力が発話に出ています。",
+    artifact: "会話の温度を測る小さなランプ",
+    keywords: ["人", "相談", "チーム", "反応"],
+    jobs: ["人材・組織開発", "カスタマーサクセス", "コミュニティ運営", "教育"],
+    figure: "胸元に会話ランプをつけ、両手で場を包むポーズの3Dフィギュア",
+    signals: ["人", "友", "友だち", "チーム", "相談", "話", "助け", "教", "相手", "仲間"]
+  },
+  {
+    type: "混沌整流アーキテクト",
+    summary: "散らばった情報や感情の流れをほどき、次の一手が見える形へ整える未知の仕事です。曖昧な状況に道を作ります。",
+    mission: "散らかった情報に、進める流れを作る。",
+    why: "整理、計画、改善への意識があり、曖昧なものを筋道に変える傾向が見えます。",
+    artifact: "色分けされた透明ボード",
+    keywords: ["整理", "分析", "改善", "計画"],
+    jobs: ["業務改善", "データ分析", "プロジェクト設計", "編集・企画"],
+    figure: "透明ボードと色分けされたパーツを持ち、情報を並べ替える3Dフィギュア",
+    signals: ["整理", "計画", "分析", "改善", "効率", "メモ", "数字", "調べ", "管理", "順番"]
+  },
+  {
+    type: "没頭導線デザイナー",
+    summary: "人が気づいたら続けてしまう入口や順番を設計する未知の仕事です。好きや夢中の理由を観察し、体験の流れに変えます。",
+    mission: "夢中になる入口を、そっと設計する。",
+    why: "好きなものに長く潜り、何が面白さを生んでいるかを感じ取る傾向が見えます。",
+    artifact: "没頭スイッチつきの小さな扉",
+    keywords: ["没頭", "好き", "楽しい", "夢中"],
+    jobs: ["サービス企画", "UXデザイン", "イベント企画", "コンテンツ設計"],
+    figure: "黄色い小さな扉を開けながら、楽しそうに振り向く3Dフィギュア",
+    signals: ["没頭", "好き", "楽しい", "夢中", "ハマ", "時間", "続け", "熱中", "こだわり"]
+  },
+  {
+    type: "安心リズム設計士",
+    summary: "人が無理なく続けられるペースや仕組みを作る未知の仕事です。安定と自由のバランスを読み、日常に効く流れを設計します。",
+    mission: "続けられる安心を、毎日のリズムにする。",
+    why: "働き方や未来の感覚に対して、無理なく続く状態を大事にする傾向が見えます。",
+    artifact: "一日のリズムを刻む小型メトロノーム",
+    keywords: ["安定", "自由", "継続", "生活"],
+    jobs: ["人事制度", "学習設計", "事業運営", "ワークスタイル設計"],
+    figure: "白いメトロノームを持ち、落ち着いた表情で立つ3Dフィギュア",
+    signals: ["安定", "自由", "朝", "生活", "続け", "働き", "無理", "ペース", "理想", "未来"]
+  },
+  {
+    type: "こだわり翻訳プランナー",
+    summary: "本人だけが感じている細かなこだわりを、他の人にも届く企画や言葉へ変換する未知の仕事です。感覚と実行をつなぎます。",
+    mission: "小さなこだわりを、人に届く形へ翻訳する。",
+    why: "自分なりの基準や好き嫌いを、ただの感想で終わらせず説明しようとする傾向が見えます。",
+    artifact: "こだわりを照らす小さな翻訳レンズ",
+    keywords: ["こだわり", "言葉", "企画", "伝える"],
+    jobs: ["ブランド企画", "編集", "商品企画", "広報"],
+    figure: "透明な翻訳レンズをのぞき込み、片手に小さな企画ノートを持つ3Dフィギュア",
+    signals: ["こだわり", "伝え", "言葉", "説明", "好き", "違い", "企画", "編集", "発信"]
+  },
+  {
+    type: "日常実験ログメーカー",
+    summary: "日々の小さな試行錯誤を記録し、次の改善や発見に変える未知の仕事です。大げさではない変化を積み上げて価値にします。",
+    mission: "小さな試行錯誤を、次の発見ログにする。",
+    why: "最近の出来事や小さな達成を材料にして、次の工夫へつなげる傾向が見えます。",
+    artifact: "実験シールだらけのログブック",
+    keywords: ["成長", "記録", "工夫", "達成"],
+    jobs: ["リサーチ", "学習支援", "業務改善", "コンテンツ制作"],
+    figure: "実験シールの貼られたログブックを抱え、少し得意げに立つ3Dフィギュア",
+    signals: ["最近", "誇ら", "成長", "達成", "工夫", "記録", "日記", "ログ", "試し", "変え"]
+  }
+];
+
 const reactions = [
   { at: 30, text: "今ので30文字！いい滑り出し" },
   { at: 50, text: "50文字突破。それでそれで？" },
@@ -102,6 +182,9 @@ const els = {
   resultView: document.querySelector("#result-view"),
   resultTitle: document.querySelector("#result-title"),
   resultSummary: document.querySelector("#result-summary"),
+  resultMission: document.querySelector("#result-mission"),
+  resultWhy: document.querySelector("#result-why"),
+  resultArtifact: document.querySelector("#result-artifact"),
   resultImage: document.querySelector("#result-image"),
   keywordList: document.querySelector("#keyword-list"),
   jobList: document.querySelector("#job-list"),
@@ -595,10 +678,12 @@ function finishDiagnosis() {
   state.started = false;
   state.acceptingInput = false;
   state.ignoreSpeechUntil = Date.now() + 1600;
-  els.chatStatus.textContent = "complete";
+  els.chatStatus.textContent = "generating result";
   setMicState("解析中");
   els.skipButton.disabled = true;
   els.manualInput.disabled = true;
+  addMessage("未来診断", "診断結果と3Dフィギュア画像を生成しています");
+  showReaction("診断と画像を生成中");
 
   pauseSpeechRecognition();
 
@@ -660,32 +745,57 @@ function analyzeSpeechLogs(text) {
     .slice(0, 7)
     .map(([word]) => word);
 
-  const lower = text.toLowerCase();
-  let type = "観察を形にする編集者タイプ";
-  let summary = "話の中に、好きなものを分解して人に伝わる形へ整える力が出ています。曖昧な感覚を拾い、意味づけしながら前へ進める仕事と相性がよさそうです。";
-  let jobs = ["企画職", "UXリサーチャー", "編集・ライター", "人事・採用広報"];
+  const resultKeywords = keywords.length ? keywords : ["没頭", "こだわり", "成長", "チーム"];
+  const profile = pickResultProfile(text, resultKeywords);
+  return {
+    type: profile.type,
+    summary: profile.summary,
+    mission: profile.mission,
+    why: profile.why,
+    artifact: profile.artifact,
+    figure: profile.figure,
+    keywords: resultKeywords,
+    jobs: profile.jobs,
+    imageUrl: buildLocalFigureImage(profile.type, resultKeywords)
+  };
+}
 
-  if (/作る|制作|デザイン|描|開発|コード|ゲーム/.test(lower)) {
-    type = "手を動かして未来を試作するクリエイタータイプ";
-    summary = "考えるだけで終わらせず、実際に作りながら理解を深める傾向が強く出ています。試行錯誤の速さが価値になる環境で力を発揮しやすいです。";
-    jobs = ["プロダクトデザイナー", "エンジニア", "映像・ゲーム制作", "商品企画"];
-  } else if (/人|友|チーム|相談|話|助け|教/.test(lower)) {
-    type = "人の温度を読んで動く伴走者タイプ";
-    summary = "相手の状況を見ながら言葉や行動を調整する力が見えます。信頼関係を育て、場の流れをよくする仕事に向いていそうです。";
-    jobs = ["キャリアアドバイザー", "カスタマーサクセス", "営業企画", "教育・研修"];
-  } else if (/分析|調べ|数字|整理|計画|効率|改善/.test(lower)) {
-    type = "混沌から筋道を見つけるプランナータイプ";
-    summary = "散らばった情報を集めて、次に何をするべきかを見つける話し方です。課題を整理し、改善の道筋を描く役割と相性がよさそうです。";
-    jobs = ["マーケティング", "データアナリスト", "業務改善", "コンサルタント"];
+function pickResultProfile(text, keywords, avoidTypes = []) {
+  const source = `${text} ${keywords.join(" ")}`.toLowerCase();
+  const avoid = new Set(avoidTypes);
+  const scored = resultProfiles
+    .map((profile, index) => {
+      const signalScore = profile.signals.reduce((score, signal) => (
+        source.includes(signal.toLowerCase()) ? score + 3 : score
+      ), 0);
+      const keywordScore = profile.keywords.reduce((score, keyword) => (
+        source.includes(keyword.toLowerCase()) ? score + 2 : score
+      ), 0);
+      return { profile, index, score: signalScore + keywordScore };
+    })
+    .sort((a, b) => b.score - a.score || profileTieBreak(source, a.index, b.index));
+
+  if (scored[0]?.score > 0) {
+    return (scored.find((item) => !avoid.has(item.profile.type)) || scored[0]).profile;
   }
 
-  return {
-    type,
-    summary,
-    keywords: keywords.length ? keywords : ["没頭", "こだわり", "成長", "チーム"],
-    jobs,
-    imageUrl: buildLocalFigureImage(type, keywords.length ? keywords : ["没頭", "こだわり", "成長"])
-  };
+  const start = Math.abs(hashText(source || String(Date.now()))) % resultProfiles.length;
+  for (let offset = 0; offset < resultProfiles.length; offset += 1) {
+    const profile = resultProfiles[(start + offset) % resultProfiles.length];
+    if (!avoid.has(profile.type)) return profile;
+  }
+  return resultProfiles[0];
+}
+
+function profileTieBreak(source, leftIndex, rightIndex) {
+  const seed = Math.abs(hashText(source || "future"));
+  return ((seed + leftIndex) % resultProfiles.length) - ((seed + rightIndex) % resultProfiles.length);
+}
+
+function hashText(text) {
+  return String(text).split("").reduce((hash, char) => {
+    return ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  }, 0);
 }
 
 function buildLocalFigureImage(title, keywords) {
@@ -739,6 +849,9 @@ function escapeSvg(value) {
 function renderResult(result) {
   els.resultTitle.textContent = result.type;
   els.resultSummary.textContent = result.summary;
+  els.resultMission.textContent = result.mission || "まだ名前のない価値を見つけ、次の体験として形にする。";
+  els.resultWhy.textContent = result.why || "発話の中に、観察して意味づける力と、こだわりを人に渡す力が見えます。";
+  els.resultArtifact.textContent = result.artifact || "発見を集める小さなケース";
   els.resultImage.src = result.imageUrl || buildLocalFigureImage(result.type, result.keywords);
   els.keywordList.textContent = "";
   result.keywords.forEach((keyword) => {

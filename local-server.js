@@ -6,6 +6,12 @@ const path = require("node:path");
 loadEnvFile(".env.local");
 loadEnvFile(".env");
 
+const {
+  buildResultCandidates: buildSharedResultCandidates,
+  deriveResultProfile: deriveSharedResultProfile,
+  finalizeResult: finalizeSharedResult
+} = require("./api/_lib");
+
 const PORT = Number(process.env.PORT || 8010);
 const HOST = process.env.HOST || "127.0.0.1";
 const ROOT = __dirname;
@@ -13,6 +19,12 @@ const PUBLIC_ROOT = path.join(__dirname, "public");
 const LLM_API_URL = process.env.LLM_API_URL || "https://api.openai.com/v1/chat/completions";
 const LLM_API_KEY = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
 const LLM_MODEL = process.env.LLM_MODEL || "gpt-4o-mini";
+const IMAGE_API_URL = process.env.IMAGE_API_URL || "https://api.openai.com/v1/images/generations";
+const IMAGE_API_KEY = process.env.IMAGE_API_KEY || process.env.OPENAI_API_KEY || LLM_API_KEY;
+const IMAGE_MODEL = process.env.IMAGE_MODEL || process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+const IMAGE_SIZE = process.env.IMAGE_SIZE || "1024x1024";
+const IMAGE_QUALITY = process.env.IMAGE_QUALITY || "medium";
+const IMAGE_OUTPUT_FORMAT = process.env.IMAGE_OUTPUT_FORMAT || "webp";
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -139,10 +151,21 @@ async function handleChat(request, response) {
 
 async function handleResult(request, response) {
   const payload = await readJson(request);
-  const fallback = normalizeResult(payload.fallback || {});
+  const transcript = String(payload.transcript || "");
+  const clientFallback = normalizeResult(payload.fallback || {});
+  const fallback = ["違和感採集エディター", "未来感覚キュレーター"].includes(clientFallback.type)
+    ? normalizeResult({
+      ...deriveSharedResultProfile(transcript, clientFallback.keywords, [clientFallback.type]),
+      keywords: clientFallback.keywords
+    })
+    : clientFallback;
 
   if (!LLM_API_KEY) {
     sendJson(response, 503, { error: "api_key_missing" });
+    return;
+  }
+  if (!IMAGE_API_KEY) {
+    sendJson(response, 503, { error: "image_api_key_missing" });
     return;
   }
 
@@ -155,25 +178,49 @@ async function handleResult(request, response) {
       },
       body: JSON.stringify({
         model: LLM_MODEL,
-        temperature: 1,
-        max_tokens: 520,
+        temperature: 1.05,
+        max_tokens: 760,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: "あなたは学生の発話ログから、まだ世の中にないオリジナル職業を作る診断AIです。実在職種名ではなく、未知だけど働き方が想像できる職業名を日本語で作ってください。JSONだけ返してください。"
+            content: [
+              "あなたは学生の発話ログから、まだ世の中にないオリジナル職業を作る診断AIです。",
+              "実在職種名や一般的な適職名をそのまま出さず、未知だけど仕事内容が想像できる肩書きを作ってください。",
+              "職業名は比喩だけで終わらせず、ユーザーの発話にある具体的な行動・こだわり・対人傾向を反映してください。",
+              "figureは画像生成に使うため、1体の3Dフィギュアとして見える服装、色、持ち物、ポーズを具体的にしてください。",
+              "fallbackの職業名をそのまま採用しないでください。発話ログから毎回、新しい肩書きを作ってください。",
+              "褒めすぎず、でも本人が少し誇らしくなる温度で書いてください。",
+              "JSONだけ返してください。"
+            ].join("")
           },
           {
             role: "user",
             content: JSON.stringify({
-              transcript: payload.transcript,
-              fallback: payload.fallback,
+              transcript,
+              fallbackHint: fallback,
+              candidateDirections: buildSharedResultCandidates(transcript, fallback.keywords),
+              avoid: [
+                fallback.type,
+                clientFallback.type,
+                "違和感採集エディター",
+                "未来感覚キュレーター",
+                "プロトタイパーだけ",
+                "ファシリテーターだけ",
+                "クリエイターだけ",
+                "アーキテクトだけ",
+                "キュレーターだけ",
+                "既存職種名そのまま"
+              ],
               schema: {
                 type: "オリジナル職業名。12〜22文字程度",
-                summary: "その職業が何をする人か。120字以内",
-                keywords: "発話から拾った短いキーワード配列。4〜7個",
+                summary: "その職業が何をする人か。90〜130字",
+                mission: "この職業の一文ミッション。45字以内",
+                why: "発話ログのどの傾向からそう診断したか。90字以内",
+                artifact: "その職業が持つ象徴的な道具や成果物。30字以内",
+                keywords: "発話から拾った短いキーワード配列。4〜7個。抽象語だけにしない",
                 jobs: "近い既存領域や働き方の方向性配列。3〜4個",
-                figure: "3Dフィギュア化する時の見た目。色、持ち物、ポーズ"
+                figure: "3Dフィギュア化する時の見た目。服の色、持ち物、ポーズ、表情"
               }
             })
           }
@@ -188,11 +235,20 @@ async function handleResult(request, response) {
     }
     const data = await apiResponse.json();
     const parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
-    const result = normalizeResult({ ...fallback, ...parsed });
-    result.imageUrl = buildFigureImage(result.type, result.keywords, result.figure);
+    const result = finalizeSharedResult({ ...fallback, ...parsed }, {
+      transcript,
+      fallback,
+      avoidTypes: [fallback.type, clientFallback.type, "違和感採集エディター"]
+    });
+    result.imageUrl = await generateFigureImage(result);
+    result.imageSource = "generated";
     sendJson(response, 200, { result, source: "api" });
-  } catch {
-    sendJson(response, 502, { error: "result_api_failed" });
+  } catch (error) {
+    console.error(`result generation failed: ${error.detail || error.message}`);
+    sendJson(response, 502, {
+      error: "result_api_failed",
+      detail: error.detail || error.message
+    });
   }
 }
 
@@ -238,7 +294,13 @@ async function handleHealth(response) {
       return;
     }
 
-    sendJson(response, 200, { ok: true, model: LLM_MODEL, apiUrl: LLM_API_URL });
+    sendJson(response, 200, {
+      ok: true,
+      model: LLM_MODEL,
+      apiUrl: LLM_API_URL,
+      imageModel: IMAGE_MODEL,
+      imageApiUrl: IMAGE_API_URL
+    });
   } catch (error) {
     sendJson(response, 502, {
       ok: false,
@@ -278,37 +340,106 @@ function localResult(transcript, fallback) {
   if (/ゲーム|攻略|作る|制作|開発|コード/.test(text)) {
     result.type = "遊び筋道プロトタイパー";
     result.summary = "人が夢中になる流れを読み解き、試作品や攻略の道筋に変える未知の仕事です。楽しさの構造を見つけて、体験の入口を作ります。";
+    result.mission = "夢中の構造を、触れる試作品にする。";
+    result.why = "作る、攻略する、改善する流れに反応があり、手を動かして理解する傾向が見えます。";
+    result.artifact = "光る試作品とルートマップ";
     result.jobs = ["体験設計", "プロダクト企画", "ゲーム・教材制作", "UXリサーチ"];
     result.figure = "片手に小さなルートマップ、片手に光る試作品を持つ、好奇心の強い3Dフィギュア";
   } else if (/友だち|人|チーム|相談|話|助け/.test(text)) {
-    result.type = "温度翻訳ファシリテーター";
+    result.type = "場の温度翻訳者";
     result.summary = "人の言葉になる前の違和感や熱量を受け取り、場が動き出す言葉へ翻訳する未知の仕事です。関係性の流れを整えます。";
+    result.mission = "言葉になる前の温度を、場の一歩にする。";
+    result.why = "人の反応や関係性を見ながら、相手に合わせて動く力が発話に出ています。";
+    result.artifact = "会話の温度を測る小さなランプ";
     result.jobs = ["人材・組織開発", "カスタマーサクセス", "コミュニティ運営", "教育"];
     result.figure = "胸元に小さな会話ランプをつけ、両手で場を包むポーズの3Dフィギュア";
   } else if (/整理|計画|分析|改善|効率|メモ/.test(text)) {
     result.type = "混沌整流アーキテクト";
     result.summary = "散らばった情報や感情の流れをほどき、次の一手が見える形へ整える未知の仕事です。曖昧な状況に道を作ります。";
+    result.mission = "散らかった情報に、進める流れを作る。";
+    result.why = "整理、計画、改善への意識があり、曖昧なものを筋道に変える傾向が見えます。";
+    result.artifact = "色分けされた透明ボード";
     result.jobs = ["業務改善", "データ分析", "プロジェクト設計", "編集・企画"];
     result.figure = "透明なボードと色分けされたパーツを持ち、情報を並べ替える3Dフィギュア";
   } else {
-    result.type = "未来感覚キュレーター";
-    result.summary = "好き、違和感、こだわりの断片を集め、まだ名前のない価値として見せる未知の仕事です。感覚を企画に変えていきます。";
+    result.type = "こだわり翻訳プランナー";
+    result.summary = "本人だけが感じている細かなこだわりを、他の人にも届く企画や言葉へ変換する未知の仕事です。感覚と実行をつなぎます。";
+    result.mission = "小さなこだわりを、人に届く形へ翻訳する。";
+    result.why = "感覚を観察して意味づけ、人に伝わる形へ整える傾向が見えます。";
+    result.artifact = "こだわりを照らす小さな翻訳レンズ";
     result.jobs = ["企画職", "編集・ライター", "リサーチ", "ブランド設計"];
-    result.figure = "小さな発見を集めるケースを持ち、少し前のめりに立つ3Dフィギュア";
+    result.figure = "透明な翻訳レンズをのぞき込み、片手に小さな企画ノートを持つ3Dフィギュア";
   }
 
   result.imageUrl = buildFigureImage(result.type, result.keywords, result.figure);
   return result;
 }
 
+async function generateFigureImage(result) {
+  const apiResponse = await fetch(IMAGE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${IMAGE_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: IMAGE_MODEL,
+      prompt: buildFigurePrompt(result),
+      size: IMAGE_SIZE,
+      quality: IMAGE_QUALITY,
+      output_format: IMAGE_OUTPUT_FORMAT,
+      n: 1
+    })
+  });
+
+  if (!apiResponse.ok) {
+    const detail = await readApiError(apiResponse);
+    throw Object.assign(new Error("image_api_failed"), {
+      status: apiResponse.status,
+      detail
+    });
+  }
+
+  const data = await apiResponse.json();
+  const imageBase64 = data.data?.[0]?.b64_json;
+  if (!imageBase64) throw new Error("image_api_empty");
+
+  return `data:${imageMimeType(IMAGE_OUTPUT_FORMAT)};base64,${imageBase64}`;
+}
+
 function normalizeResult(result) {
   return {
-    type: sanitizeText(result.type || "未来感覚キュレーター", 32),
-    summary: sanitizeText(result.summary || "まだ名前のない興味やこだわりを集め、次の体験に変えていくタイプです。", 160),
+    type: sanitizeText(result.type || "こだわり翻訳プランナー", 32),
+    summary: sanitizeText(result.summary || "本人だけが感じている細かなこだわりを、他の人にも届く企画や言葉へ変換する未知の仕事です。感覚と実行をつなぎます。", 160),
+    mission: sanitizeText(result.mission || "小さなこだわりを、人に届く形へ翻訳する。", 90),
+    why: sanitizeText(result.why || "発話の中に、観察して意味づける力と、こだわりを人に渡す力が見えます。", 130),
+    artifact: sanitizeText(result.artifact || "こだわりを照らす小さな翻訳レンズ", 60),
     keywords: normalizeList(result.keywords, ["没頭", "こだわり", "発見", "整理"], 7),
     jobs: normalizeList(result.jobs, ["企画", "編集", "リサーチ"], 4),
-    figure: sanitizeText(result.figure || "丸みのある3Dフィギュア、手に小さな発見のケース", 120)
+    figure: sanitizeText(result.figure || "透明な翻訳レンズをのぞき込み、片手に小さな企画ノートを持つ3Dフィギュア", 120)
   };
+}
+
+function buildFigurePrompt(result) {
+  return [
+    "Create one original 3D collectible figure for a Japanese web career diagnosis result.",
+    "Style: polished toy photography, soft studio lighting, friendly premium 3D figure, rounded shapes, clean bright background.",
+    "Composition: full-body character centered, one symbolic prop, expressive pose, clear silhouette, no clutter.",
+    "Do not include readable text, letters, logos, captions, UI, watermarks, or extra characters.",
+    `Fictional occupation name: ${result.type}`,
+    `Mission: ${result.mission}`,
+    `Why this person fits: ${result.why}`,
+    `Symbolic artifact: ${result.artifact}`,
+    `Keywords: ${result.keywords.join(", ")}`,
+    `Figure details: ${result.figure}`,
+    "Make the image feel optimistic, specific, imaginative, and suitable for students."
+  ].join("\n");
+}
+
+function imageMimeType(format) {
+  if (format === "jpeg" || format === "jpg") return "image/jpeg";
+  if (format === "webp") return "image/webp";
+  return "image/png";
 }
 
 function normalizeList(value, fallback, max) {
@@ -410,4 +541,5 @@ function sendJson(response, status, body) {
 server.listen(PORT, HOST, () => {
   console.log(`未来診断 server: http://${HOST}:${PORT}/`);
   console.log(LLM_API_KEY ? `LLM API: configured (${LLM_MODEL})` : "LLM API: missing OPENAI_API_KEY or LLM_API_KEY");
+  console.log(IMAGE_API_KEY ? `Image API: configured (${IMAGE_MODEL})` : "Image API: missing OPENAI_API_KEY or IMAGE_API_KEY");
 });

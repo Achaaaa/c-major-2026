@@ -1,4 +1,6 @@
 const {
+  IMAGE_API_URL,
+  IMAGE_MODEL,
   LLM_API_URL,
   LLM_MODEL,
   callChatCompletions,
@@ -17,7 +19,13 @@ module.exports = async function handler(req, res) {
     await callChatCompletions([
       { role: "user", content: "ok" }
     ], { maxTokens: 8, temperature: 0 });
-    sendJson(res, 200, { ok: true, model: LLM_MODEL, apiUrl: LLM_API_URL });
+    sendJson(res, 200, {
+      ok: true,
+      model: LLM_MODEL,
+      apiUrl: LLM_API_URL,
+      imageModel: IMAGE_MODEL,
+      imageApiUrl: IMAGE_API_URL
+    });
   } catch (error) {
     sendJson(res, 502, {
       ok: false,
