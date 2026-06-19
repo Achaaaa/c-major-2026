@@ -161,7 +161,14 @@ const state = {
   apiFailed: false,
   chatHistory: [],
   chatFingerprints: new Set(),
-  milestones: new Set()
+  milestones: new Set(),
+  audioStream: null,
+  audioContext: null,
+  audioAnalyser: null,
+  waveformData: null,
+  waveformAnimation: null,
+  waveformLevel: 0,
+  waveformPhase: 0
 };
 
 const els = {
@@ -174,7 +181,7 @@ const els = {
   charCounter: document.querySelector("#char-counter"),
   progressFill: document.querySelector("#progress-fill"),
   charBubbles: document.querySelector("#char-bubbles"),
-  liveTranscript: document.querySelector("#live-transcript"),
+  waveformCanvas: document.querySelector("#voice-waveform"),
   generatingPanel: document.querySelector("#generating-panel"),
   startButton: document.querySelector("#start-button"),
   skipButton: document.querySelector("#skip-button"),
@@ -262,7 +269,7 @@ function initSpeechRecognition(forceNew = false) {
   return recognition;
 }
 
-function startExperience() {
+async function startExperience() {
   state.apiFailed = false;
   state.started = true;
   state.acceptingInput = true;
@@ -277,6 +284,7 @@ function startExperience() {
   addMessage("ガイド", "準備できました。思いついたことからどうぞ。");
   checkApiHealth();
   startChatStream();
+  await startAudioWaveform();
 
   state.recognition = state.recognition || initSpeechRecognition();
   if (state.recognition) {
@@ -350,6 +358,155 @@ function resumeSpeechRecognition(delay = 700) {
       // Recognition may already be running.
     }
   }, delay);
+}
+
+async function startAudioWaveform() {
+  if (!els.waveformCanvas) return;
+  drawWaveformFrame();
+  if (state.audioAnalyser) {
+    startWaveformLoop();
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    startWaveformLoop();
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) {
+      state.audioStream = stream;
+      startWaveformLoop();
+      return;
+    }
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.78;
+    source.connect(analyser);
+    state.audioStream = stream;
+    state.audioContext = audioContext;
+    state.audioAnalyser = analyser;
+    state.waveformData = new Uint8Array(analyser.fftSize);
+  } catch {
+    state.audioAnalyser = null;
+    state.waveformData = null;
+  }
+
+  startWaveformLoop();
+}
+
+function startWaveformLoop() {
+  if (state.waveformAnimation) return;
+  const draw = () => {
+    drawWaveformFrame();
+    state.waveformAnimation = window.requestAnimationFrame(draw);
+  };
+  state.waveformAnimation = window.requestAnimationFrame(draw);
+}
+
+function stopAudioWaveform() {
+  if (state.waveformAnimation) {
+    window.cancelAnimationFrame(state.waveformAnimation);
+    state.waveformAnimation = null;
+  }
+  if (state.audioStream) {
+    state.audioStream.getTracks().forEach((track) => track.stop());
+    state.audioStream = null;
+  }
+  if (state.audioContext) {
+    state.audioContext.close().catch(() => {});
+    state.audioContext = null;
+  }
+  state.audioAnalyser = null;
+  state.waveformData = null;
+  state.waveformLevel = 0;
+  drawWaveformFrame();
+}
+
+function drawWaveformFrame() {
+  const canvas = els.waveformCanvas;
+  if (!canvas) return;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, rect.width);
+  const height = Math.max(1, rect.height);
+  const dpr = window.devicePixelRatio || 1;
+  const targetWidth = Math.round(width * dpr);
+  const targetHeight = Math.round(height * dpr);
+  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+  }
+
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, width, height);
+
+  const samples = getWaveformSamples();
+  const level = samples.level;
+  state.waveformLevel = state.waveformLevel * 0.84 + level * 0.16;
+  state.waveformPhase += 0.045 + state.waveformLevel * 0.16;
+
+  const centerY = height / 2;
+  const amplitude = Math.max(8, height * (0.12 + state.waveformLevel * 0.48));
+  const gradient = context.createLinearGradient(0, 0, width, 0);
+  gradient.addColorStop(0, "#20b7bd");
+  gradient.addColorStop(0.5, "#ffd166");
+  gradient.addColorStop(1, "#ff6f61");
+
+  context.lineWidth = 5;
+  context.lineCap = "round";
+  context.strokeStyle = "rgba(32, 183, 189, 0.12)";
+  drawWavePath(context, samples.values, width, centerY, amplitude * 1.25, state.waveformPhase, true);
+  context.stroke();
+
+  context.lineWidth = 3;
+  context.strokeStyle = gradient;
+  drawWavePath(context, samples.values, width, centerY, amplitude, state.waveformPhase, false);
+  context.stroke();
+}
+
+function getWaveformSamples() {
+  if (state.audioAnalyser && state.waveformData) {
+    state.audioAnalyser.getByteTimeDomainData(state.waveformData);
+    let level = 0;
+    const values = Array.from(state.waveformData, (value) => {
+      const normalized = (value - 128) / 128;
+      level += Math.abs(normalized);
+      return normalized;
+    });
+    return { values, level: Math.min(1, level / values.length * 3.2) };
+  }
+
+  const values = Array.from({ length: 96 }, (_, index) => {
+    return Math.sin(index * 0.24 + state.waveformPhase) * 0.25;
+  });
+  return { values, level: state.started ? 0.18 : 0.08 };
+}
+
+function drawWavePath(context, values, width, centerY, amplitude, phase, isGlow) {
+  context.beginPath();
+  values.forEach((value, index) => {
+    const progress = values.length <= 1 ? 0 : index / (values.length - 1);
+    const idleMotion = Math.sin(progress * Math.PI * 4 + phase) * (isGlow ? 0.14 : 0.08);
+    const x = progress * width;
+    const y = centerY + (value + idleMotion) * amplitude;
+    if (index === 0) {
+      context.moveTo(x, y);
+    } else {
+      context.lineTo(x, y);
+    }
+  });
 }
 
 function scheduleNextChat(delay = getChatDelay(), generation = state.chatGeneration) {
@@ -497,18 +654,13 @@ function addSpeech(text, fromMic = false) {
   renderTranscript();
   updateProgress();
 
-  if (fromMic) {
-    els.manualInput.value = state.currentText;
-  }
-
   if (state.currentText.length >= TARGET_CHARS) {
     completeTopic();
   }
 }
 
-function renderTranscript(interim = "") {
-  const display = `${state.currentText}${interim ? ` ${interim}` : ""}`.trim();
-  els.liveTranscript.textContent = display || "";
+function renderTranscript() {
+  drawWaveformFrame();
 }
 
 function updateProgress() {
@@ -701,6 +853,7 @@ function finishDiagnosis() {
   showReaction("診断と画像を生成中");
 
   pauseSpeechRecognition();
+  stopAudioWaveform();
 
   window.setTimeout(async () => {
     const transcript = state.allTexts.join("。");
@@ -895,6 +1048,7 @@ function handleApiFailure(message) {
   state.started = false;
   state.chatPending = false;
   pauseSpeechRecognition();
+  stopAudioWaveform();
   setChatStatus("APIエラー");
   setMicState("APIエラー");
   els.skipButton.disabled = true;
@@ -911,6 +1065,7 @@ function handleApiFailure(message) {
 function restart() {
   stopChatStream();
   pauseSpeechRecognition();
+  stopAudioWaveform();
   state.topicIndex = 0;
   state.currentText = "";
   state.allTexts = [];
