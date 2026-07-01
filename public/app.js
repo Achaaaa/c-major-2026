@@ -172,6 +172,8 @@ const state = {
 };
 
 const els = {
+  titleScreen: document.querySelector("#title-screen"),
+  titleStartButton: document.querySelector("#title-start-button"),
   topic: document.querySelector("#current-topic"),
   hint: document.querySelector("#topic-hint"),
   topicCount: document.querySelector("#topic-count"),
@@ -270,6 +272,9 @@ function initSpeechRecognition(forceNew = false) {
 }
 
 async function startExperience() {
+  if (els.titleScreen) {
+    els.titleScreen.hidden = true;
+  }
   state.apiFailed = false;
   state.started = true;
   state.acceptingInput = true;
@@ -1096,6 +1101,9 @@ function restart() {
   resetCurrentInput();
 }
 
+if (els.titleStartButton) {
+  els.titleStartButton.addEventListener("click", startExperience);
+}
 els.startButton.addEventListener("click", startExperience);
 els.skipButton.addEventListener("click", completeTopic);
 els.restartButton.addEventListener("click", restart);

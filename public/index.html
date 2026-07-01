@@ -3,13 +3,39 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>c-major-project</title>
+    <title>未来診断</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
+    <section id="title-screen" class="title-screen" aria-labelledby="title-heading">
+      <div class="title-backdrop" aria-hidden="true">
+        <div class="title-wave">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="title-chat title-chat-one">それっていつから？</div>
+        <div class="title-chat title-chat-two">そこ、もう少し聞きたい</div>
+        <div class="title-chat title-chat-three">今の温度、いい</div>
+      </div>
+      <div class="title-content">
+        <p class="title-kicker">LIVE SELF ANALYSIS</p>
+        <h1 id="title-heading">未来診断</h1>
+        <p class="title-lead">ここにタグライン</p>
+        <button id="title-start-button" class="primary-button title-start-button" type="button">
+          <span class="button-icon" aria-hidden="true">●</span>
+          はじめる
+        </button>
+      </div>
+    </section>
+
     <main class="app-shell">
       <section class="stage" aria-labelledby="current-topic">
         <header class="topbar">
